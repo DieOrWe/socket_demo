@@ -1,80 +1,62 @@
-import React, { useEffect, useRef, useState } from "react"
-import io from "socket.io-client"
-import "./App.css"
+import React, { useState } from 'react';
+import SockJS from 'sockjs-client';
+import Stomp from 'stompjs';
 
 function App() {
-  const [state, setState] = useState({ type: "", roomid: "", sender: "", message: "" })
-  const [chat, setChat] = useState([])
+  const [stompClient, setStompClient] = useState(null);
+  const [connected, setConnected] = useState(false);
+  const [greetings, setGreetings] = useState([]);
 
-  const socketRef = useRef()
-
-  useEffect(
-    () => {
-      socketRef.current = io.connect("ws://localhost:8080", {
-        path: '/ws/chat',
-        transports: ['websocket']
-      })
-      socketRef.current.on("message", ({ type, roomid, sender, message }) => {
-        setChat([...chat, { sender, message }])
-      })
-      console.log('useEffect');
-      return () => socketRef.current.disconnect()
-    },
-    [chat]
-  )
-
-  const onTextChange = (e) => {
-    setState({ ...state, [e.target.name]: e.target.value })
+  function connect() {
+    const socket = new SockJS('http://localhost:8080/gs-guide-websocket');
+    const client = Stomp.over(socket);
+    client.connect({}, frame => {
+      setConnected(true);
+      console.log('Connected: ' + frame);
+      client.subscribe('/topic/greetings', greeting => {
+        showGreeting(JSON.parse(greeting.body).content);
+      });
+      setStompClient(client);
+    });
   }
 
-  const onMessageSubmit = (e) => {
-    const { sender, message } = state
-    socketRef.current.emit("message", { type:"TALK", roomid:"2e820745-3673-4cab-a180-e094649930c7", sender, message })
-    e.preventDefault()
-    setState({ message: "", sender })
+  function disconnect() {
+    if (stompClient !== null) {
+      stompClient.disconnect();
+    }
+    setConnected(false);
+    console.log("Disconnected");
   }
 
-  const renderChat = () => {
-    return chat.map(({ sender, message }, index) => (
-      <div key={index}>
-        <h3>
-          {sender}: <span>{message}</span>
-        </h3>
-      </div>
-    ))
+  function sendName(name) {
+    stompClient.send("/app/hello", {}, JSON.stringify({ name }));
   }
 
-  const handleEnter = () => {
-    socketRef.current.emit("message", { type:"ENTER", roomid:"2e820745-3673-4cab-a180-e094649930c7", sender:"사용자1", message:"" })
-    console.log('입장완료!!');
+  function showGreeting(message) {
+    setGreetings([...greetings, message]);
   }
 
   return (
-    <div className="card">
-      <form onSubmit={onMessageSubmit}>
-        <h1>Messenger</h1>
-        <div className="name-field">
-          <input name="sender" onChange={(e) => onTextChange(e)} value={state.sender} label="Name" />
+    <div>
+      {!connected && <button id="connect" onClick={connect}>Connect</button>}
+      {connected && <button id="disconnect" onClick={disconnect}>Disconnect</button>}
+      {connected && (
+        <div id="conversation">
+          <input id="name" type="text" />
+          <button id="send" onClick={() => sendName(document.getElementById('name').value)}>Send</button>
+          <table id="greetings">
+            <tbody>
+              {greetings.map((greeting, index) => (
+                <tr key={index}>
+                  <td>{greeting}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        <div>
-          <input
-            name="message"
-            onChange={(e) => onTextChange(e)}
-            value={state.message}
-            id="outlined-multiline-static"
-            variant="outlined"
-            label="Message"
-          />
-        </div>
-        <button>Send Message</button>
-      </form>
-      <div className="render-chat">
-        <h1>Chat Log</h1>
-        {renderChat()}
-      </div>
-      <button onClick={handleEnter}>입장</button>
+      )}
     </div>
-  )
+  );
 }
 
-export default App
+export default App;
