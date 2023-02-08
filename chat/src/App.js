@@ -3,17 +3,21 @@ import io from "socket.io-client"
 import "./App.css"
 
 function App() {
-  const [state, setState] = useState({ message: "", name: "" })
+  const [state, setState] = useState({ type: "", roomid: "", sender: "", message: "" })
   const [chat, setChat] = useState([])
 
   const socketRef = useRef()
 
   useEffect(
     () => {
-      socketRef.current = io.connect("http://localhost:4000")
-      socketRef.current.on("message", ({ name, message }) => {
-        setChat([...chat, { name, message }])
+      socketRef.current = io.connect("ws://localhost:8080", {
+        path: '/ws/chat',
+        transports: ['websocket']
       })
+      socketRef.current.on("message", ({ type, roomid, sender, message }) => {
+        setChat([...chat, { sender, message }])
+      })
+      console.log('useEffect');
       return () => socketRef.current.disconnect()
     },
     [chat]
@@ -24,20 +28,25 @@ function App() {
   }
 
   const onMessageSubmit = (e) => {
-    const { name, message } = state
-    socketRef.current.emit("message", { name, message })
+    const { sender, message } = state
+    socketRef.current.emit("message", { type:"TALK", roomid:"2e820745-3673-4cab-a180-e094649930c7", sender, message })
     e.preventDefault()
-    setState({ message: "", name })
+    setState({ message: "", sender })
   }
 
   const renderChat = () => {
-    return chat.map(({ name, message }, index) => (
+    return chat.map(({ sender, message }, index) => (
       <div key={index}>
         <h3>
-          {name}: <span>{message}</span>
+          {sender}: <span>{message}</span>
         </h3>
       </div>
     ))
+  }
+
+  const handleEnter = () => {
+    socketRef.current.emit("message", { type:"ENTER", roomid:"2e820745-3673-4cab-a180-e094649930c7", sender:"사용자1", message:"" })
+    console.log('입장완료!!');
   }
 
   return (
@@ -45,7 +54,7 @@ function App() {
       <form onSubmit={onMessageSubmit}>
         <h1>Messenger</h1>
         <div className="name-field">
-          <input name="name" onChange={(e) => onTextChange(e)} value={state.name} label="Name" />
+          <input name="sender" onChange={(e) => onTextChange(e)} value={state.sender} label="Name" />
         </div>
         <div>
           <input
@@ -63,6 +72,7 @@ function App() {
         <h1>Chat Log</h1>
         {renderChat()}
       </div>
+      <button onClick={handleEnter}>입장</button>
     </div>
   )
 }
